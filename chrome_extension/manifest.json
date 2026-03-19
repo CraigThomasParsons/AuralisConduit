@@ -1,0 +1,30 @@
+{
+    "manifest_version": 3,
+    "name": "Auralis Automation Client",
+    "version": "1.0",
+    "description": "Executes Auralis jobs in the browser.",
+    "permissions": [
+        "activeTab",
+        "scripting",
+        "clipboardRead",
+        "alarms"
+    ],
+    "host_permissions": [
+        "http://localhost:3000/*",
+        "https://chatgpt.com/*",
+        "https://*.openai.com/*"
+    ],
+    "background": {
+        "service_worker": "background.js"
+    },
+    "content_scripts": [
+        {
+            "matches": [
+                "https://chatgpt.com/*"
+            ],
+            "js": [
+                "content.js"
+            ]
+        }
+    ]
+}

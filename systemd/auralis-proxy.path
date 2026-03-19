@@ -1,0 +1,9 @@
+[Unit]
+Description=Monitor inbox for new Auralis jobs
+
+[Path]
+DirectoryNotEmpty=%h/Code/Auralis/inbox
+Unit=auralis-proxy.service
+
+[Install]
+WantedBy=paths.target

@@ -21,3 +21,7 @@ __pycache__/
 # OS
 .DS_Store
 Thumbs.db
+
+# Rust / Cargo
+target/
+**/*.rs.bk

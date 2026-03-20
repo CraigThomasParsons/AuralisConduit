@@ -6,4 +6,4 @@
 | 1 | Auralis → Krax contract | completed |
 | 2 | Krax → Vera contract | completed |
 | 3 | Vera → Auralis contract | completed |
-| 4 | Filesystem layout and gap register | not-started |
+| 4 | Filesystem layout and gap register | completed |

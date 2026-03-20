@@ -17,6 +17,7 @@ import shlex
 from lib import fs, parser
 
 PORT = 3000
+SCHEMA_VERSION = "v1"
 
 
 def load_config(config_path: str) -> dict:
@@ -79,7 +80,7 @@ def build_krax_contract(source_job_id: str, job_data: dict, run_dir: str, instru
     correlation_id = str(uuid.uuid4())
 
     contract = {
-        "schema_version": "v1",
+        "schema_version": SCHEMA_VERSION,
         "job_id": krax_job_id,
         "correlation_id": correlation_id,
         "causation_id": None,

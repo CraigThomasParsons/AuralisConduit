@@ -36,3 +36,41 @@
 
 - `Krax/contracts/auralis_to_krax.py` created
 - Auralis server updated to stamp schema version in job.json
+
+## Completion Notes (2026-03-20)
+
+Task complete.
+
+### What Changed
+
+- Created `Krax/contracts/auralis_to_krax.py` with:
+   - `SCHEMA_VERSION = "v1"`
+   - `REQUIRED_FIELDS` constant
+   - `build_krax_job(...)` builder helper
+   - `validate_krax_job(job)` validator helper
+- Updated `Krax/bin/krax_server.py` to import and use `validate_krax_job(...)` from the shared module.
+- Added explicit `SCHEMA_VERSION = "v1"` constant in `Auralis/bin/auralis_server.py` and used it when writing `job.json`.
+
+### Why Duplication Is Explicit
+
+- Repositories are separate (`Auralis` and `Krax`), so direct shared imports across repos are not reliable.
+- Sprint1 Task 3 requirement allows mirrored schema definitions with explicit version stamping.
+- Source of truth for runtime validation now lives in `Krax/contracts/auralis_to_krax.py`.
+- Auralis mirrors the version constant and emits the expected schema version value.
+
+### Validation
+
+- Editor checks report no errors in:
+   - `Krax/contracts/auralis_to_krax.py`
+   - `Krax/bin/krax_server.py`
+   - `Auralis/bin/auralis_server.py`
+- Smoke test executed in Krax virtualenv:
+   - `build_krax_job(...)` returns payload with `schema_version == "v1"`
+   - `validate_krax_job(...)` accepts generated payload
+
+### Drift Warning
+
+- If `SCHEMA_VERSION` in Auralis diverges from `SCHEMA_VERSION` in Krax contract module, intake will reject jobs.
+- Future contract changes must update both repos in the same task.
+
+**Status: COMPLETE**

@@ -15,7 +15,7 @@ Project: TYS Loop
 ## Status Board
 
 - Sprint0: complete (Tasks 0-4 complete on 2026-03-20)
-- Sprint1: in-progress (Task 0, Task 1, and Task 2 complete on 2026-03-20)
+- Sprint1: in-progress (Task 0, Task 1, Task 2, and Task 3 complete on 2026-03-20)
 - Sprint2: ready
 - Sprint3: ready
 - Sprint4: ready
@@ -32,6 +32,7 @@ Project: TYS Loop
 - Sprint1 Task 0: identified the existing Auralis dispatch seam in `do_POST('/job/complete')` and the Krax inbox polling seam in `do_GET('/job')`.
 - Sprint1 Task 1: replaced the primitive Auralis -> Krax handoff with a canonical contract writer backed by config and atomic JSON output.
 - Sprint1 Task 2: Krax now validates inbox jobs, promotes valid work into `runs/`, writes `receipt.json`, and rejects malformed jobs into `failed/`.
+- Sprint1 Task 3: added Krax contract module (`contracts/auralis_to_krax.py`), wired Krax ingestion to shared validator, and stamped explicit schema version constant in Auralis writer.
 
 ## Per-Sprint Execution Rule
 

@@ -39,3 +39,39 @@
 
 - `Krax/chrome_extension/` updated
 - manual test result recorded in Completion Notes
+
+## Completion Notes (2026-03-20)
+
+Task complete.
+
+### What Was Updated
+
+- `Krax/chrome_extension/content.js`
+   - switched to a resilient Grok-oriented selector flow:
+      - prompt input: `textarea[data-testid="prompt-textarea"]`, fallback `textarea`, fallback role textbox/contenteditable
+      - send action: explicit send button lookup first, Enter fallback
+      - response containers: `.prose`, `.markdown`, `[data-message-author-role='assistant']`
+   - replaced polling-based completion with MutationObserver-based DOM-settle completion detection
+   - improved error handling so content script reports `JOB_FAIL` instead of silently stalling
+- `Krax/chrome_extension/background.js`
+   - preserved polling from `http://localhost:3001/job`
+   - hardened tab/message dispatch with retry when content script is not yet attached
+   - switched completion POST target to `http://localhost:3001/complete` per Sprint2 Task1 requirement
+   - keeps lock release behavior on both success and failure
+- `Krax/bin/krax_server.py`
+   - added endpoint alias support so `POST /complete` and `POST /job/complete` both work
+
+### Validation
+
+- JS syntax checks passed for:
+   - `Krax/chrome_extension/content.js`
+   - `Krax/chrome_extension/background.js`
+- Python error checks report no errors for:
+   - `Krax/bin/krax_server.py`
+
+### Manual Verification Status
+
+- Manual browser verification (load unpacked extension -> open Grok -> send live job) is prepared but not executed in this task note.
+- Full live-browser proof remains part of Sprint2 Task4 end-to-end smoke validation.
+
+**Status: COMPLETE**

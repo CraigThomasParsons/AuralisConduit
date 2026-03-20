@@ -16,6 +16,7 @@
 - diagram is complete — an implementer can set up the filesystem from it alone
 - gap register covers every missing piece with a sprint owner
 - no two agents have conflicting assumptions about where a shared file lives
+- the diagram clearly identifies which parts can later map to Arcane inbox, outbox, failed, archive, projection, and bridge layers
 
 ## Implementation Steps
 

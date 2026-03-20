@@ -18,6 +18,7 @@
 - `status` enum is fully defined: pass, fail, partial, error
 - `observations` has enough structure for Auralis to build a meaningful reflection prompt
 - Auralis polling strategy is documented (poll interval, timeout, what to do on timeout)
+- schema notes how Vera verdict states map to Arcane validation or review stage outcomes
 
 ## Implementation Steps
 
@@ -39,6 +40,7 @@
    - fail + attempts >= 3 → escalate to human inbox, stop loop
    - partial → treat as fail
    - error → treat as fail
+5. Add Arcane compatibility notes for validation verdicts, retry exhaustion, and user-escalation semantics.
 
 ## Handoff Artifacts
 

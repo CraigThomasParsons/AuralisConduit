@@ -201,3 +201,32 @@ Everything else is:
 - Wiring the verdict back to Auralis
 
 The architecture is already proven. Now it scales across multiple intelligences.
+
+---
+
+## Arcane Reuse Path
+
+This TYS loop should not become a parallel system with its own incompatible runtime rules.
+
+It should be treated as a proving ground for capabilities that can later be folded back into ArcaneArcadeMachineFactory.
+
+### What Should Stay Aligned With Arcane
+
+- Contract fields: keep `correlation_id`, `attempt`, timestamps, and artifact path semantics compatible with Arcane's event and job contracts.
+- Filesystem flow: keep the same consume-once queue pattern Arcane uses in `stage_runtime.py` and `stage_workers.py` — inbox, runs, failed, archive, outbox-style handoff.
+- Validation model: use the same contract-first approach Arcane uses in `arcane_event_contract.py` — invalid payloads fail loudly, not silently.
+- Read model pattern: TYS should eventually expose job status the same way Arcane exposes projection state — append-only writes plus derived status snapshots.
+- UI bridge potential: Vera and Krax status should be representable later in Arcane's chatroom and WebSocket layers without inventing a second live-status protocol.
+
+### Likely Reuse Back Into ArcaneArcadeMachineFactory
+
+- Auralis as the external reasoning ingress for factory jobs that need ChatGPT refinement.
+- Krax as a specialized implementation worker for code-generation stages.
+- Vera as a validation stage that can sit beside or inside Arcane's existing stage pipeline.
+- TYS retry, audit, and verdict handling as reusable runtime primitives for Arcane's stage orchestration.
+
+### Rule
+
+Every new TYS contract should be mappable into ArcaneArcadeMachineFactory without lossy translation.
+
+If a TYS field cannot be mapped to Arcane concepts like correlation, causation, attempt, status, or artifact refs, that is a design smell and should be corrected during Sprint0.

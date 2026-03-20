@@ -18,6 +18,7 @@
 - schema is complete enough to write a Python validator from it
 - location is canonical — not ambiguous between agents
 - example payload is valid against the schema
+- schema notes how `job_id`, `correlation_id`, `attempt`, and artifact expectations map into Arcane concepts
 
 ## Implementation Steps
 
@@ -34,6 +35,7 @@
 2. Review against vision.md contract definition.
 3. Confirm file drop location: `Krax/inbox/<job_id>/job.json`.
 4. Write error semantics: Krax must reject and log any job missing required fields.
+5. Add Arcane compatibility notes for correlation, retry attempt, status progression, and artifact references.
 
 ## Handoff Artifacts
 

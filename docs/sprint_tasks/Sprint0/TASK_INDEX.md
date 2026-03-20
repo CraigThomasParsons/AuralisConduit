@@ -2,7 +2,7 @@
 
 | Task | Title | Status |
 |------|-------|--------|
-| 0 | Scope lock and baseline | not-started |
+| 0 | Scope lock and baseline | completed |
 | 1 | Auralis → Krax contract | not-started |
 | 2 | Krax → Vera contract | not-started |
 | 3 | Vera → Auralis contract | not-started |

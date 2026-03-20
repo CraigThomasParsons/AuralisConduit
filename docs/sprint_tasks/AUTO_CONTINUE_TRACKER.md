@@ -14,7 +14,7 @@ Project: TYS Loop
 
 ## Status Board
 
-- Sprint0: ready
+- Sprint0: in-progress (Task 0 complete on 2026-03-20)
 - Sprint1: ready
 - Sprint2: ready
 - Sprint3: ready
@@ -23,7 +23,7 @@ Project: TYS Loop
 
 ## Current Progress
 
-- No sprints started yet. Begin with Sprint0.
+- Sprint0: completed Task 0 scope lock and baseline, including Arcane reuse inventory.
 
 ## Per-Sprint Execution Rule
 

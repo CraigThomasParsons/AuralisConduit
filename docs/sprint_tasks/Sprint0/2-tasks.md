@@ -17,6 +17,7 @@
 - schema is complete enough to write a Python validator
 - `artifact_paths` field is well-defined (absolute paths or relative to Krax runs/)
 - `expected_behavior` has a standard format Vera's evaluator can parse
+- schema notes how output artifacts and behavior summary could map to Arcane stage outbox artifacts
 
 ## Implementation Steps
 
@@ -32,6 +33,7 @@
 2. Confirm file location: `Krax/runs/<job_id>/krax_output.json`.
 3. Define what Vera does if `artifact_paths` is empty: skip or fail with reason.
 4. Define acceptance criteria field so Vera knows what "pass" means.
+5. Add Arcane compatibility notes for artifact refs, stage outputs, and future validation-stage handoff.
 
 ## Handoff Artifacts
 

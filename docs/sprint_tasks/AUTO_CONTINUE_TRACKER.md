@@ -14,7 +14,7 @@ Project: TYS Loop
 
 ## Status Board
 
-- Sprint0: in-progress (Task 0 complete on 2026-03-20)
+- Sprint0: in-progress (Task 0 and Task 1 complete on 2026-03-20)
 - Sprint1: ready
 - Sprint2: ready
 - Sprint3: ready
@@ -24,6 +24,7 @@ Project: TYS Loop
 ## Current Progress
 
 - Sprint0: completed Task 0 scope lock and baseline, including Arcane reuse inventory.
+- Sprint0: completed Task 1 Auralis -> Krax contract baseline with Arcane-compatible correlation, causation, attempt, and artifact semantics.
 
 ## Per-Sprint Execution Rule
 

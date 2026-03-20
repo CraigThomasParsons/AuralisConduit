@@ -32,3 +32,44 @@
 
 - `Krax/tools/smoke_test_dispatch.sh` created
 - test output recorded in Completion Notes
+
+## Completion Notes (2026-03-20)
+
+Task complete.
+
+### Script Created
+
+- `Krax/tools/smoke_test_dispatch.sh`
+
+What the script does:
+- starts Auralis and Krax servers if they are not already running
+- creates a real job under `Auralis/inbox/test_dispatch_<timestamp>_<rand>/briefing.md`
+- calls `GET /job` then simulates extension callback via `POST /job/complete`
+- waits up to 60 seconds for a new `Krax/runs/*/receipt.json`
+- verifies `"status": "received"`
+- exits 0 on pass, non-zero on fail
+
+### Test Runs
+
+Run 1 (failed):
+- Result: `FAIL: no new receipt.json found within 60 seconds`
+- Diagnosis: existing long-running Auralis/Krax processes were stale and produced old handoff behavior.
+
+Run 2 (pass, controlled):
+- Action: restarted processes bound on ports 3000 and 3001, then reran script.
+- Output:
+
+```text
+INFO: starting Auralis server
+INFO: starting Krax server
+PASS: dispatch smoke test succeeded
+INFO: receipt=/home/craigpar/Code/Krax/runs/efe00747-d680-4eb1-a342-c9b4ffef2c9d/receipt.json
+```
+
+Acceptance checks met:
+- real job dropped in Auralis inbox
+- receipt written within timeout
+- receipt status verified as `received`
+- script exits 0 on success and non-zero on failure
+
+**Status: COMPLETE**

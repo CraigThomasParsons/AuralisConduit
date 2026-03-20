@@ -2,7 +2,7 @@
 
 | Task | Title | Status |
 |------|-------|--------|
-| 0 | Scope lock and baseline | not-started |
+| 0 | Scope lock and baseline | completed |
 | 1 | Auralis post-completion job.json writer | not-started |
 | 2 | Krax job ingestion and receipt | not-started |
 | 3 | Contract validation layer | not-started |

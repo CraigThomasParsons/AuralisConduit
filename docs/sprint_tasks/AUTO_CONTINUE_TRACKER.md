@@ -16,7 +16,7 @@ Project: TYS Loop
 
 - Sprint0: complete (Tasks 0-4 complete on 2026-03-20)
 - Sprint1: complete (Tasks 0-4 complete on 2026-03-20)
-- Sprint2: ready
+- Sprint2: in-progress (Task 0 complete on 2026-03-20)
 - Sprint3: ready
 - Sprint4: ready
 - Sprint5: ready
@@ -34,6 +34,7 @@ Project: TYS Loop
 - Sprint1 Task 2: Krax now validates inbox jobs, promotes valid work into `runs/`, writes `receipt.json`, and rejects malformed jobs into `failed/`.
 - Sprint1 Task 3: added Krax contract module (`contracts/auralis_to_krax.py`), wired Krax ingestion to shared validator, and stamped explicit schema version constant in Auralis writer.
 - Sprint1 Task 4: end-to-end dispatch smoke test passed with `Krax/tools/smoke_test_dispatch.sh`, verifying `receipt.json` status `received` for a real Auralis -> Krax flow.
+- Sprint2 Task 0: scope lock and selector baseline complete; Grok target selectors and Auralis-vs-Krax extension differences documented.
 
 ## Per-Sprint Execution Rule
 

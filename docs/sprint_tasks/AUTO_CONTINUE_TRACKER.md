@@ -15,7 +15,7 @@ Project: TYS Loop
 ## Status Board
 
 - Sprint0: complete (Tasks 0-4 complete on 2026-03-20)
-- Sprint1: in-progress (Task 0 complete on 2026-03-20)
+- Sprint1: in-progress (Task 0 and Task 1 complete on 2026-03-20)
 - Sprint2: ready
 - Sprint3: ready
 - Sprint4: ready
@@ -30,6 +30,7 @@ Project: TYS Loop
 - Sprint0 Task 3: Vera -> Auralis verdict contract baseline with structured observations, polling policy, and retry/escalation decision rules.
 - Sprint0 Task 4: canonical filesystem layout, shared handoff rules, and gap register across Auralis, Krax, Vera, and Arcane reuse boundaries.
 - Sprint1 Task 0: identified the existing Auralis dispatch seam in `do_POST('/job/complete')` and the Krax inbox polling seam in `do_GET('/job')`.
+- Sprint1 Task 1: replaced the primitive Auralis -> Krax handoff with a canonical contract writer backed by config and atomic JSON output.
 
 ## Per-Sprint Execution Rule
 

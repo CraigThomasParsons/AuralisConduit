@@ -36,3 +36,59 @@
 
 - patch applied to auralis_server.py
 - config.yaml updated with krax_inbox_path
+
+## Completion Notes (2026-03-20)
+
+Task complete.
+
+### What Changed
+
+- Added `krax_inbox_path: /home/craigpar/Code/Krax/inbox` to `config.yaml`.
+- Replaced the primitive inline Krax payload in `Auralis/bin/auralis_server.py` with a canonical writer.
+- Added helper functions for:
+   - simple config loading
+   - UTC timestamp generation
+   - goal normalization from briefing/goals content
+   - context construction from the original Auralis job files
+   - canonical contract assembly
+   - atomic JSON writing
+- Added `write_krax_job(...)` which:
+   - generates a new Krax-owned UUID job ID
+   - generates a new correlation ID
+   - writes Sprint0 Task 1 contract fields
+   - writes `job.json` atomically into `Krax/inbox/<krax_job_id>/job.json`
+   - logs `[TYS] Krax job dispatched: <job_id>` on success
+- Wrapped Krax dispatch in `try/except` so a dispatch failure does not break normal Auralis completion and archive flow.
+
+### Contract Shape Written
+
+The emitted payload now includes:
+
+- `schema_version`
+- `job_id`
+- `correlation_id`
+- `causation_id`
+- `created_at`
+- `source_agent`
+- `attempt`
+- `goal`
+- `context`
+- `instructions`
+- `constraints`
+- `artifact_refs`
+- `artifacts_expected`
+- `source_run`
+- `metadata`
+
+### Notes
+
+- `instructions` is currently sourced from the Auralis completion response text, which preserves the existing Think -> Build handoff behavior.
+- `goal` and `context` are sourced from the original Auralis job files so provenance is preserved.
+- If `krax_inbox_path` is missing or the directory does not exist, Auralis now logs a warning and continues without crashing.
+
+### Validation
+
+- Static validation only: `auralis_server.py` and `config.yaml` both pass editor error checks.
+- Full runtime smoke test not executed in this task because that requires a live ChatGPT completion flow plus a running Krax consumer.
+
+**Status: COMPLETE**

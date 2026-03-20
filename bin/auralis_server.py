@@ -4,6 +4,8 @@ import socketserver
 import json
 import os
 import sys
+import uuid
+from datetime import datetime, timezone
 
 # Ensure we can import from lib
 script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -15,6 +17,122 @@ import shlex
 from lib import fs, parser
 
 PORT = 3000
+
+
+def load_config(config_path: str) -> dict:
+    config = {}
+
+    if not os.path.exists(config_path):
+        return config
+
+    with open(config_path, "r", encoding="utf-8") as config_file:
+        for raw_line in config_file:
+            line = raw_line.strip()
+            if not line or line.startswith("#") or ":" not in line:
+                continue
+
+            key, value = line.split(":", 1)
+            config[key.strip()] = value.strip()
+
+    return config
+
+
+def utc_now_iso() -> str:
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def first_non_empty_line(text: str) -> str:
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if line:
+            return line
+    return ""
+
+
+def normalize_goal(job_data: dict) -> str:
+    explicit_goal = job_data.get("goals.md", "").strip()
+    if explicit_goal:
+        return first_non_empty_line(explicit_goal)
+
+    briefing = job_data.get("briefing.md", "").strip()
+    if briefing:
+        return first_non_empty_line(briefing)
+
+    return "Implement the requested task."
+
+
+def build_context(job_id: str, job_data: dict, run_dir: str) -> str:
+    context_parts = [f"Auralis source job: {job_id}"]
+
+    for key in ("context.md", "goals.md", "success.md", "steps.md"):
+        value = job_data.get(key, "").strip()
+        if value:
+            label = key.replace(".md", "")
+            context_parts.append(f"{label}: {value}")
+
+    context_parts.append(f"source_run: {run_dir}")
+    return "\n\n".join(context_parts)
+
+
+def build_krax_contract(source_job_id: str, job_data: dict, run_dir: str, instructions: str) -> tuple[str, dict]:
+    krax_job_id = str(uuid.uuid4())
+    correlation_id = str(uuid.uuid4())
+
+    contract = {
+        "schema_version": "v1",
+        "job_id": krax_job_id,
+        "correlation_id": correlation_id,
+        "causation_id": None,
+        "created_at": utc_now_iso(),
+        "source_agent": "auralis",
+        "attempt": 1,
+        "goal": normalize_goal(job_data),
+        "context": build_context(source_job_id, job_data, run_dir),
+        "instructions": instructions.strip(),
+        "constraints": [],
+        "artifact_refs": [
+            os.path.join(run_dir, "response.txt"),
+        ],
+        "artifacts_expected": [
+            "krax_output.json",
+            "extracted/*",
+        ],
+        "source_run": run_dir,
+        "metadata": {
+            "auralis_job_id": source_job_id,
+        },
+    }
+
+    return krax_job_id, contract
+
+
+def write_json_atomic(file_path: str, payload: dict):
+    temp_path = f"{file_path}.tmp"
+    with open(temp_path, "w", encoding="utf-8") as handle:
+        json.dump(payload, handle, indent=2)
+    os.replace(temp_path, file_path)
+
+
+def write_krax_job(source_job_id: str, job_data: dict, run_dir: str, instructions: str, config: dict):
+    krax_inbox_root = config.get("krax_inbox_path", "").strip()
+    if not krax_inbox_root:
+        print("[TYS] Warning: krax_inbox_path is not configured; skipping Krax dispatch.")
+        return
+
+    if not os.path.isdir(krax_inbox_root):
+        print(f"[TYS] Warning: Krax inbox path does not exist: {krax_inbox_root}; skipping Krax dispatch.")
+        return
+
+    krax_job_id, krax_contract = build_krax_contract(source_job_id, job_data, run_dir, instructions)
+    krax_job_dir = os.path.join(krax_inbox_root, krax_job_id)
+    os.makedirs(krax_job_dir, exist_ok=True)
+
+    krax_payload_path = os.path.join(krax_job_dir, "job.json")
+    write_json_atomic(krax_payload_path, krax_contract)
+    print(f"[TYS] Krax job dispatched: {krax_job_id}")
+
+
+CONFIG = load_config(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "config.yaml"))
 
 class AuralisHandler(http.server.BaseHTTPRequestHandler):
     def _set_headers(self, code=200):
@@ -87,7 +205,13 @@ class AuralisHandler(http.server.BaseHTTPRequestHandler):
                 self._set_headers(400)
                 return
 
+            if not isinstance(result_text, str) or not result_text.strip():
+                self._set_headers(400)
+                self.wfile.write(json.dumps({"error": "Missing response text"}).encode())
+                return
+
             print(f"[*] Job {job_id} completed by Extension.")
+            job_data = fs.read_job_files(job_id)
             
             # 1. Save Response Text
             run_dir = os.path.join(fs.RUNS_DIR, job_id)
@@ -95,6 +219,60 @@ class AuralisHandler(http.server.BaseHTTPRequestHandler):
             
             with open(os.path.join(run_dir, "response.txt"), "w") as f:
                 f.write(result_text)
+                
+            # =============== EXTRACT SNIPPETS ==================
+            # Delegate parsing of snippet blocks to the parser library
+            extracted_snippets = parser.extract_snippet_files(result_text)
+            
+            # Build an extraction directory to isolate parsed code from other run files
+            extracted_dir = os.path.join(run_dir, "extracted")
+            
+            # Start tracking extraction metadata for the manifest
+            manifest = []
+            
+            # Process returned files only if any valid code blocks were discovered
+            if extracted_snippets:
+                
+                # Ensure the container directory exists before attempting writes
+                os.makedirs(extracted_dir, exist_ok=True)
+                
+                # Iterate each tracked snippet payload structure
+                for snippet in extracted_snippets:
+                    
+                    # Establish a stable unique filename in case of collisions
+                    final_filename = snippet.filename
+                    target_file_path = os.path.join(extracted_dir, final_filename)
+                    counter = 2
+                    
+                    # Prevent overwrites by detecting collisions automatically 
+                    while os.path.exists(target_file_path):
+                        
+                        # Split name and extension to inject the counter properly
+                        base, ext = os.path.splitext(snippet.filename)
+                        final_filename = f"{base}.{counter}{ext}"
+                        target_file_path = os.path.join(extracted_dir, final_filename)
+                        counter += 1
+                        
+                    # Write the fully realized code string out to the targeted path
+                    with open(target_file_path, "w") as sf:
+                        sf.write(snippet.code)
+                        
+                    # Maintain context for debugging and tracking
+                    print(f"  - Extracted snippet: {final_filename}")
+                    
+                    # Append strict property definitions to our run manifest array
+                    manifest.append({
+                        "filename": final_filename,
+                        "language": snippet.language,
+                        "detection_method": snippet.detection_method,
+                        "confidence": snippet.confidence
+                    })
+                    
+                # Store the manifest index beside the snippets
+                manifest_path = os.path.join(run_dir, "extracted_files.json")
+                with open(manifest_path, "w") as mf:
+                    mf.write(json.dumps(manifest, indent=2))
+            # ===================================================
                 
             # 2. Parse & Execute (Phase 4.5)
             print(f"  - Parsing response...")
@@ -181,11 +359,17 @@ class AuralisHandler(http.server.BaseHTTPRequestHandler):
             # Save Execution Log
             with open(os.path.join(run_dir, "execution.log"), "w") as f:
                 f.write("\n".join(log_lines))
-                
-            # 3. Handoff
+
+            # 3. Handoff to Krax (Sprint1 Task 1)
+            try:
+                write_krax_job(job_id, job_data, run_dir, result_text, CONFIG)
+            except Exception as exc:
+                print(f"[TYS] Warning: failed to dispatch Krax job for {job_id}: {exc}")
+            
+            # Also write standard diagnostic handoff record
             fs.write_handoff(job_id, run_dir)
             
-            # 3. Archive
+            # 4. Archive Phase
             fs.archive_job(job_id)
             
             self._set_headers(200)

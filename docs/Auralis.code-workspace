@@ -1,0 +1,38 @@
+{
+	"folders": [
+		{
+			"path": ".."
+		},
+		{
+			"path": "../../Vera"
+		},
+		{
+			"path": "../../Krax"
+		},
+		{
+			"path": "../../ThePostalService"
+		},
+		{
+			"path": "../../Mason"
+		},
+		{
+			"path": "../../Gopher"
+		},
+		{
+			"path": "../../AgentsOfTheWritersRoom"
+		},
+		{
+			"path": "../../PiperStoryArchitect"
+		},
+		{
+			"path": "../../ArcaneArcadeMachineFactory/TheAgents"
+		},
+		{
+			"path": "../../PiperArms"
+		},
+		{
+			"path": "../../MyOwnAgent"
+		}
+	],
+	"settings": {}
+}

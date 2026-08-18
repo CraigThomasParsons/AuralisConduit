@@ -14,7 +14,7 @@ if script_dir not in sys.path:
 
 import subprocess
 import shlex
-from lib import fs, parser
+from lib import fs, parser, post_office
 
 PORT = 3000
 SCHEMA_VERSION = "v1"
@@ -75,7 +75,7 @@ def build_context(job_id: str, job_data: dict, run_dir: str) -> str:
     return "\n\n".join(context_parts)
 
 
-def build_krax_contract(source_job_id: str, job_data: dict, run_dir: str, instructions: str) -> tuple[str, dict]:
+def build_krax_contract(source_job_id: str, job_data: dict, run_dir: str, instructions: str, snippets: list = None) -> tuple[str, dict]:
     krax_job_id = str(uuid.uuid4())
     correlation_id = str(uuid.uuid4())
 
@@ -90,7 +90,9 @@ def build_krax_contract(source_job_id: str, job_data: dict, run_dir: str, instru
         "goal": normalize_goal(job_data),
         "context": build_context(source_job_id, job_data, run_dir),
         "instructions": instructions.strip(),
+        "url": "https://grok.com/project/c84f9f0e-f423-4148-97cb-b76f92f1fa64",
         "constraints": [],
+        "attachments": [{"filename": s.filename, "content": s.code} for s in (snippets or [])],
         "artifact_refs": [
             os.path.join(run_dir, "response.txt"),
         ],
@@ -114,23 +116,21 @@ def write_json_atomic(file_path: str, payload: dict):
     os.replace(temp_path, file_path)
 
 
-def write_krax_job(source_job_id: str, job_data: dict, run_dir: str, instructions: str, config: dict):
-    krax_inbox_root = config.get("krax_inbox_path", "").strip()
-    if not krax_inbox_root:
-        print("[TYS] Warning: krax_inbox_path is not configured; skipping Krax dispatch.")
-        return
+def write_krax_job(source_job_id: str, job_data: dict, run_dir: str, instructions: str, config: dict, snippets: list = None):
+    # Build the standard JSON contract for Krax Execution
+    krax_job_id, krax_contract = build_krax_contract(source_job_id, job_data, run_dir, instructions, snippets)
 
-    if not os.path.isdir(krax_inbox_root):
-        print(f"[TYS] Warning: Krax inbox path does not exist: {krax_inbox_root}; skipping Krax dispatch.")
-        return
+    # Establish the local outbox staging directory for Postal Service pickup
+    package_dir = os.path.join(fs.OUTBOX_DIR, krax_job_id)
+    os.makedirs(package_dir, exist_ok=True)
 
-    krax_job_id, krax_contract = build_krax_contract(source_job_id, job_data, run_dir, instructions)
-    krax_job_dir = os.path.join(krax_inbox_root, krax_job_id)
-    os.makedirs(krax_job_dir, exist_ok=True)
-
-    krax_payload_path = os.path.join(krax_job_dir, "job.json")
+    # Dump the core contract payload into the package
+    krax_payload_path = os.path.join(package_dir, "job.json")
     write_json_atomic(krax_payload_path, krax_contract)
-    print(f"[TYS] Krax job dispatched: {krax_job_id}")
+
+    # Dispatch the package signal using the local RabbitMQ publisher
+    post_office.dispatch_package("auralis", "krax", krax_job_id, fs.OUTBOX_DIR)
+    print(f"[TYS] Krax job dispatched via PostalService: {krax_job_id}")
 
 
 CONFIG = load_config(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "config.yaml"))
@@ -161,7 +161,7 @@ class AuralisHandler(http.server.BaseHTTPRequestHandler):
                 # 2. Read job data
                 job_data = fs.read_job_files(job_id)
                 briefing = fs.compose_briefing(job_id, job_data)
-                url = job_data.get("url.txt", "https://chatgpt.com/")
+                url = job_data.get("url.txt", "https://chatgpt.com/g/g-p-69b999011d348191951b6a69c247a2b2-code-the-aamf-agents/c/69b9b6ec-e158-8332-864b-4b5ddea80bcc")
                 
                 # 3. Create run dir (if not exists)
                 fs.init_run(job_id)
@@ -363,7 +363,7 @@ class AuralisHandler(http.server.BaseHTTPRequestHandler):
 
             # 3. Handoff to Krax (Sprint1 Task 1)
             try:
-                write_krax_job(job_id, job_data, run_dir, result_text, CONFIG)
+                write_krax_job(job_id, job_data, run_dir, result_text, CONFIG, extracted_snippets)
             except Exception as exc:
                 print(f"[TYS] Warning: failed to dispatch Krax job for {job_id}: {exc}")
             
@@ -377,12 +377,30 @@ class AuralisHandler(http.server.BaseHTTPRequestHandler):
             self.wfile.write(json.dumps({"status": "archived"}).encode())
             
         elif self.path == '/job/fail':
-            length = int(self.headers.get('content-length'))
-            data = json.loads(self.rfile.read(length))
+            length = int(self.headers.get('content-length', '0'))
+            try:
+                data = json.loads(self.rfile.read(length))
+            except json.JSONDecodeError:
+                self._set_headers(400)
+                self.wfile.write(json.dumps({"error": "Invalid JSON payload"}).encode())
+                return
+
             job_id = data.get("id")
             error = data.get("error")
-            
+            if not isinstance(job_id, str) or not job_id.strip() or not isinstance(error, str) or not error.strip():
+                self._set_headers(400)
+                self.wfile.write(json.dumps({"error": "Failure payload requires id and error"}).encode())
+                return
+
             print(f"[!] Job {job_id} failed: {error}")
+            run_dir = fs.init_run(job_id)
+            write_json_atomic(os.path.join(run_dir, "failure.json"), {
+                "job_id": job_id,
+                "error": error,
+                "stage": data.get("stage", "unknown"),
+                "diagnostics": data.get("diagnostics", {}),
+                "failed_at": utc_now_iso(),
+            })
             fs.fail_job(job_id)
             
             self._set_headers(200)

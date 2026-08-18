@@ -1,0 +1,16 @@
+{
+    "name": "auralis/e2e-tests",
+    "authors": [
+        {
+            "name": "Craig Parsons",
+            "email": "craig.thomas.parsons@gmail.com"
+        }
+    ],
+    "require-dev": {
+        "codeception/codeception": "^5.3",
+        "codeception/module-rest": "^3.4",
+        "codeception/module-phpbrowser": "^4.0",
+        "guzzlehttp/guzzle": "^7.10",
+        "codeception/module-asserts": "*"
+    }
+}

@@ -23,6 +23,8 @@ Project: TYS Loop
 
 ## Current Progress
 
+- 2026-08-18 Auralis repair checkpoint: ChatGPT extension dispatch/completion handling hardened and covered by focused selector tests. Live authenticated browser + PostalService + Krax receipt validation remains required; Sprint2 status is unchanged.
+
 - Sprint0: complete.
 - Sprint0 Task 0: scope lock and current-state baseline, including Arcane reuse inventory.
 - Sprint0 Task 1: Auralis -> Krax contract baseline with Arcane-compatible correlation, causation, attempt, and artifact semantics.

@@ -95,10 +95,10 @@ function proc() {}
 Example:
 
 - `scrum_master_review.mjs`
-    - Read blocker artifacts
-    - Build summaries
-    - Write review report
-    - Print operator output
+  - Read blocker artifacts
+  - Build summaries
+  - Write review report
+  - Print operator output
 
 Nothing more.
 

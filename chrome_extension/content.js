@@ -1,287 +1,193 @@
-// content.js
-// Auralis Chrome Extension - Content Script
-// Injects prompts into ChatGPT and extracts responses via UI interaction.
+// Auralis Chrome Extension - ChatGPT content bridge.
 
-console.log("%c AURALIS CONTENT SCRIPT LOADED ", "background: #222; color: #bada55; font-size: 20px");
+const AURALIS = {
+    composerSelectors: ['#prompt-textarea', '[data-testid="prompt-textarea"]', 'div.ProseMirror[contenteditable="true"]', 'form [role="textbox"][contenteditable="true"]', 'form textarea', 'div[contenteditable="true"]'],
+    sendSelectors: ['[data-testid="send-button"]', 'button[aria-label="Send prompt"]', 'button[aria-label^="Send"]', 'form button[type="submit"]'],
+    stopSelectors: ['[data-testid="stop-button"]', 'button[aria-label="Stop generating"]', 'button[aria-label^="Stop"]'],
+    composerTimeoutMs: 15000, sendTimeoutMs: 10000, responseTimeoutMs: 120000, settleMs: 3500, pollMs: 250
+};
 
-window.auralisDebugLog = "";
+let activeJobId = null;
 
-chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-    if (request.type === "EXECUTE_JOB") {
-        executeAuralisJob(request.job).catch((error) => {
-            reportJobFailure(request.job.id, error.message);
-        });
-    }
-});
-
-/**
- * Main execution flow for an Auralis job.
- * 
- * Orchestrates finding the input, sending the prompt,
- * waiting for the full response, and capturing the text.
- */
-async function executeAuralisJob(job) {
-    console.log("Auralis: Executing Job", job.id);
-    document.body.style.border = "10px solid red"; // Processing visual indicator
-    window.auralisDebugLog = "Started job. ";
-
-    // Retrieve baseline message count to detect when a new response block is added.
-    const initialMessageCount = countAssistantMessages();
-
-    // Inject and send the prompt to ChatGPT.
-    await injectAndSendPrompt(job.prompt);
-
-    // Wait for the DOM to settle and generation to complete via MutationObserver.
-    await waitForResponseCompletion(initialMessageCount);
-
-    // Capture the final generated text using the UI copy button or fallback scraping.
-    const responseText = await extractFinalAssistantResponse(initialMessageCount);
-
-    // Signal completion back to the background script.
-    document.body.style.border = "10px solid green"; // Success visual indicator
-    chrome.runtime.sendMessage({
-        type: "JOB_COMPLETE",
-        data: {
-            id: job.id,
-            response: responseText,
-            debug: window.auralisDebugLog
+if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.onMessage) {
+    chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+        if (request.type === 'AURALIS_PING') {
+            sendResponse({ ready: true });
+            return false;
         }
+        if (request.type !== 'EXECUTE_JOB') return false;
+        if (activeJobId) {
+            sendResponse({ accepted: false, reason: `Already processing ${activeJobId}` });
+            return false;
+        }
+        activeJobId = request.job.id;
+        sendResponse({ accepted: true });
+        executeAuralisJob(request.job)
+            .catch((error) => reportJobFailure(request.job.id, error))
+            .finally(() => { activeJobId = null; });
+        return false;
     });
 }
 
-/**
- * Locates the ChatGPT prompt textarea dynamically.
- * 
- * Falls back through standard selectors to ensure resilience against minor DOM changes.
- */
-function findPromptTextarea() {
-    let area = document.getElementById("prompt-textarea");
-    if (area) return area;
+class AuralisStageError extends Error {
+    constructor(stage, message, diagnostics = {}) {
+        super(message);
+        this.name = 'AuralisStageError';
+        this.stage = stage;
+        this.diagnostics = diagnostics;
+    }
+}
 
-    area = document.querySelector('[data-testid="prompt-textarea"]');
-    if (area) return area;
+async function executeAuralisJob(job) {
+    setBorder('red');
+    const baselineTurns = getAssistantTurns();
+    const composer = await waitForElement(AURALIS.composerSelectors, AURALIS.composerTimeoutMs, isUsableComposer);
+    if (!composer) throw selectorError('composer', AURALIS.composerSelectors);
+    await injectPrompt(composer, job.prompt);
 
-    area = document.querySelector('div.ProseMirror');
-    if (area) return area;
+    const sendButton = await waitForElement(AURALIS.sendSelectors, AURALIS.sendTimeoutMs, isClickable);
+    if (!sendButton) throw selectorError('send', AURALIS.sendSelectors);
+    sendButton.click();
 
-    // Fallback: Use standard web accessibility tags
-    area = document.querySelector('[role="textbox"]');
-    if (area) return area;
+    const responseTurn = await waitForResponseCompletion(baselineTurns);
+    const responseText = await extractAssistantResponse(responseTurn);
+    if (!responseText.trim()) throw new AuralisStageError('extract', 'The assistant response was empty.');
 
-    // Fallback: Just look for a literal textarea
-    area = document.querySelector('textarea');
-    if (area) return area;
+    setBorder('green');
+    chrome.runtime.sendMessage({
+        type: 'JOB_COMPLETE',
+        data: { id: job.id, response: responseText, debug: 'composer:found; send:clicked; response:settled' }
+    });
+}
 
-    // Ultimate fallback for any major ChatGPT UI update
-    const editables = document.querySelectorAll('div[contenteditable="true"]');
-    if (editables.length > 0) {
-        // The last content-editable is usually the main chat input
-        return editables[editables.length - 1];
+function setBorder(color) {
+    if (document.body) document.body.style.border = `10px solid ${color}`;
+}
+
+function isVisible(element) {
+    if (!element || !element.isConnected) return false;
+    const style = typeof getComputedStyle === 'function' ? getComputedStyle(element) : null;
+    if (style && (style.display === 'none' || style.visibility === 'hidden')) return false;
+    const rect = typeof element.getBoundingClientRect === 'function' ? element.getBoundingClientRect() : { width: 1, height: 1 };
+    return rect.width > 0 && rect.height > 0;
+}
+
+function isUsableComposer(element) {
+    return isVisible(element) && !element.disabled && element.getAttribute('aria-disabled') !== 'true';
+}
+
+function isClickable(element) {
+    return isUsableComposer(element);
+}
+
+function findFirst(selectors, predicate = () => true, root = document) {
+    for (const selector of selectors) {
+        for (const element of root.querySelectorAll(selector)) {
+            if (predicate(element)) return { element, selector };
+        }
     }
     return null;
 }
 
-/**
- * Injects text into the prompt box and clicks send.
- */
-async function injectAndSendPrompt(promptText) {
-    let textarea = findPromptTextarea();
-
-    // Poll for the textarea in case React is still rendering the page.
-    if (!textarea) {
-        window.auralisDebugLog += "Waiting for UI to render... ";
-        for (let i = 0; i < 20; i++) {
-            await sleep(500);
-            textarea = findPromptTextarea();
-            if (textarea) break;
-        }
+async function waitForElement(selectors, timeoutMs, predicate) {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+        const match = findFirst(selectors, predicate);
+        if (match) return match.element;
+        await sleep(AURALIS.pollMs);
     }
+    return null;
+}
 
-    // Reject early to prevent orphaned operations if the UI is missing.
-    if (!textarea) {
-        throw new Error("Unable to locate ChatGPT prompt textarea.");
-    }
-
-    textarea.focus();
-
-    // Handle both raw textarea and content-editable divs (ProseMirror).
-    if (textarea.tagName === "TEXTAREA" || textarea.tagName === "INPUT") {
-        textarea.value = promptText;
+async function injectPrompt(composer, promptText) {
+    composer.focus();
+    if (composer instanceof HTMLTextAreaElement || composer instanceof HTMLInputElement) {
+        const prototype = composer instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+        Object.getOwnPropertyDescriptor(prototype, 'value').set.call(composer, promptText);
     } else {
-        // Clear children and set innerText for contenteditable
-        textarea.innerHTML = "";
-        textarea.innerText = promptText;
+        composer.replaceChildren();
+        composer.textContent = promptText;
     }
-
-    // Trigger React state updates so the send button activates.
-    textarea.dispatchEvent(new Event("input", { bubbles: true }));
-
-    // Wait slightly for DOM to process the input event and render the send button.
-    await sleep(500);
-
-    const sendButton = document.querySelector('[data-testid="send-button"]');
-
-    // Exit safely if the send button never appears.
-    if (!sendButton) {
-        throw new Error("Unable to locate ChatGPT send button.");
-    }
-
-    sendButton.click();
-    window.auralisDebugLog += "Prompt sent. ";
+    const InputEventType = typeof InputEvent === 'function' ? InputEvent : Event;
+    composer.dispatchEvent(new InputEventType('input', { bubbles: true, inputType: 'insertText', data: promptText }));
+    composer.dispatchEvent(new Event('change', { bubbles: true }));
 }
 
-/**
- * Reads the current number of assistant response blocks in the chat.
- */
-function countAssistantMessages() {
-    let assistantMsgs = document.querySelectorAll('.markdown');
-    if (assistantMsgs.length === 0) {
-        assistantMsgs = document.querySelectorAll("div[data-message-author-role='assistant']");
-    }
-    return assistantMsgs.length;
+function getAssistantTurns() {
+    const explicit = Array.from(document.querySelectorAll('[data-message-author-role="assistant"]'));
+    if (explicit.length) return explicit;
+    return Array.from(document.querySelectorAll('[data-testid^="conversation-turn-"]')).filter((turn) => Boolean(turn.querySelector('.markdown, [data-message-author-role="assistant"]')));
 }
 
-/**
- * Uses a highly efficient MutationObserver to monitor the page for DOM changes.
- * 
- * Instead of looking for fragile, constantly-changing ChatGPT-specific IDs (like 'stop-button'),
- * we simply monitor the entire DOM for character streaming. When the DOM receives streams
- * of new characters and then goes COMPLETELY quiet for 3 seconds, we know generation is complete.
- */
-function waitForResponseCompletion(initialMessageCount) {
-    return new Promise((resolve, reject) => {
-        let lastMutationTime = Date.now();
-        let hasStreamed = false;
-        const MAX_TIMEOUT = 120000;
+function isGenerating() {
+    return Boolean(findFirst(AURALIS.stopSelectors, isVisible));
+}
 
-        const observer = new MutationObserver((mutations) => {
-            for (let m of mutations) {
-                // If text is being added or nodes are being added, it's streaming
-                if (m.type === 'characterData' || (m.type === 'childList' && m.addedNodes.length > 0)) {
-                    hasStreamed = true;
-                    lastMutationTime = Date.now();
+async function waitForResponseCompletion(baselineTurns) {
+    const baselineCount = baselineTurns.length;
+    const deadline = Date.now() + AURALIS.responseTimeoutMs;
+    let responseTurn = null;
+    let lastText = '';
+    let lastChangeAt = Date.now();
+    let observer = null;
+    try {
+        while (Date.now() < deadline) {
+            if (!responseTurn || !responseTurn.isConnected) {
+                const currentTurns = getAssistantTurns();
+                responseTurn = currentTurns.length > baselineCount ? currentTurns[currentTurns.length - 1] : null;
+                if (responseTurn) {
+                    lastText = responseTurn.innerText || responseTurn.textContent || '';
+                    lastChangeAt = Date.now();
+                    observer = new MutationObserver(() => {
+                        const text = responseTurn.innerText || responseTurn.textContent || '';
+                        if (text !== lastText) { lastText = text; lastChangeAt = Date.now(); }
+                    });
+                    observer.observe(responseTurn, { childList: true, subtree: true, characterData: true });
                 }
             }
-        });
-
-        // Interval to check if mutations have settled for 3.5 seconds
-        const settleInterval = setInterval(() => {
-            const timeSinceLastMut = Date.now() - lastMutationTime;
-
-            if (hasStreamed && timeSinceLastMut > 3500) {
-                window.auralisDebugLog += "Generation finished (DOM settled). ";
-                clearInterval(settleInterval);
-                clearTimeout(timeoutId);
-                observer.disconnect();
-                resolve(true);
+            if (responseTurn) {
+                const text = responseTurn.innerText || responseTurn.textContent || '';
+                if (text !== lastText) { lastText = text; lastChangeAt = Date.now(); }
+                if (text.trim() && !isGenerating() && Date.now() - lastChangeAt >= AURALIS.settleMs) return responseTurn;
             }
-        }, 1000);
-
-        const timeoutId = setTimeout(() => {
-            clearInterval(settleInterval);
-            observer.disconnect();
-            reject(new Error(`Timeout waiting for response completion after ${MAX_TIMEOUT}ms.`));
-        }, MAX_TIMEOUT);
-
-        observer.observe(document.body, { childList: true, subtree: true, characterData: true });
+            await sleep(AURALIS.pollMs);
+        }
+    } finally {
+        if (observer) observer.disconnect();
+    }
+    throw new AuralisStageError('response', `Timed out after ${AURALIS.responseTimeoutMs}ms waiting for a new assistant turn.`, {
+        baselineCount, currentCount: getAssistantTurns().length, generating: isGenerating()
     });
 }
 
-/**
- * Finds the latest assistant response and extracts it safely.
- */
-async function extractFinalAssistantResponse(initialMessageCount) {
-    // Robustly find all markdown blocks on the page. ChatGPT wraps assistant text in .markdown
-    let assistantMsgs = Array.from(document.querySelectorAll('.markdown'));
-
-    // Fallback if .markdown is not used
-    if (assistantMsgs.length === 0) {
-        assistantMsgs = Array.from(document.querySelectorAll("div[data-message-author-role='assistant']"));
-    }
-
-    // Guard clause: ensure there is actually a new message to scrape.
-    if (assistantMsgs.length <= initialMessageCount) {
-        window.auralisDebugLog += "Error: No new messages found during extraction. ";
-        throw new Error("No new response found to extract.");
-    }
-
-    // The most recent response block
-    const latestMsgBlock = assistantMsgs[assistantMsgs.length - 1];
-    // Target the most recent response block at the bottom of the chat.
-    const newestMsg = assistantMsgs[assistantMsgs.length - 1];
-
-    // Find the standard copy button inside this message block.
-    let copyButton = newestMsg.querySelector('[data-testid="copy-turn-action-button"]');
-
-    // If missing, climb up to the turn container and look again.
-    if (!copyButton) {
-        const turnContainer = newestMsg.closest('[data-testid^="conversation-turn"]');
-        if (turnContainer) {
-            copyButton = turnContainer.querySelector('[data-testid="copy-turn-action-button"]');
-        }
-    }
-
-    if (copyButton) {
+async function extractAssistantResponse(turn) {
+    const copyButton = turn.querySelector('[data-testid="copy-turn-action-button"]') || turn.closest('[data-testid^="conversation-turn-"]')?.querySelector('[data-testid="copy-turn-action-button"]');
+    if (copyButton && isClickable(copyButton)) {
         copyButton.click();
-
-        // Wait for the clipboard API to complete standard copy operation.
         await sleep(300);
-
         try {
-            const clipboardText = await navigator.clipboard.readText();
-            window.auralisDebugLog += `Copied via button (${clipboardText.length} chars). `;
-            return clipboardText;
-        } catch (error) {
-            console.error("Auralis: Clipboard read failed:", error);
-            window.auralisDebugLog += `Clipboard error: ${error.message}. `;
-            // Do not throw; proceed to fallback extraction below.
-        }
-    } else {
-        window.auralisDebugLog += "Copy button not found. ";
+            const copied = await navigator.clipboard.readText();
+            if (copied.trim()) return copied;
+        } catch (_) { /* DOM fallback below. */ }
     }
-
-    // Fallback: Manually scrape innerText from the markdown container if clipboard fails.
-    return scrapeTextFromMessageBlock(newestMsg);
+    const content = turn.matches('.markdown') ? turn : turn.querySelector('.markdown') || turn;
+    return content.innerText || content.textContent || '';
 }
 
-/**
- * Extracts inner text directly from the DOM as a last-resort fallback.
- */
-function scrapeTextFromMessageBlock(messageElement) {
-    const markdownContent = messageElement.querySelector('.markdown');
-    const extractedText = markdownContent ? markdownContent.innerText : messageElement.innerText;
-
-    window.auralisDebugLog += `DOM fallback extraction (${extractedText.length} chars). `;
-    return extractedText;
+function selectorError(stage, selectors) {
+    return new AuralisStageError(stage, `Unable to locate a usable ${stage} control.`, { selectors, url: location.href });
 }
 
-/**
- * Dispatches an error payload back to the proxy/server.
- */
-function reportJobFailure(jobId, errorMessage) {
-    console.error("Auralis Job Error:", errorMessage);
-    document.body.style.border = "10px solid orange"; // Error visual indicator
-
-    // Dump the first 1000 chars of the page to help us debug what's actually rendering
-    let pageContext = "(No body found)";
-    try {
-        if (document.body) {
-            pageContext = document.body.innerText.substring(0, 1000).replace(/\n/g, '  ');
-        }
-    } catch (e) { }
-
+function reportJobFailure(jobId, error) {
+    setBorder('orange');
     chrome.runtime.sendMessage({
-        type: "JOB_FAIL",
-        data: {
-            id: jobId,
-            error: `${errorMessage} | Page content seen: ${pageContext}`
-        }
+        type: 'JOB_FAIL',
+        data: { id: jobId, error: error.message || String(error), stage: error.stage || 'unknown', diagnostics: error.diagnostics || {} }
     });
 }
 
-/**
- * Syntactic sugar for setTimeout promises.
- */
-function sleep(ms) {
-    return new Promise(resolve => setTimeout(resolve, ms));
+function sleep(ms) { return new Promise((resolve) => setTimeout(resolve, ms)); }
+
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = { AURALIS, findFirst, isVisible, isClickable, isUsableComposer };
 }

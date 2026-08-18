@@ -25,3 +25,8 @@ Thumbs.db
 # Rust / Cargo
 target/
 **/*.rs.bk
+
+# Local dependencies and runtime output
+vendor/
+logs/
+*.log
